@@ -19,7 +19,7 @@ export interface FilterCondition {
   id: string;
   columnId: string;
   operator: FilterOperator;
-  value: any; // 'TODAY', '7', '30' or specific values
+  value: any; 
 }
 
 export interface ViewFilter {
@@ -36,11 +36,18 @@ export interface ExternalInput {
   alias: string;
 }
 
+export interface ExternalFileReference {
+  nodeId: string;
+  nodeName: string;
+  alias: string;
+}
+
 export interface AIConfig {
   prompt: string;
   logicCode?: string; 
   inputPaths: string[];
   externalInputs?: ExternalInput[];
+  externalFiles?: ExternalFileReference[]; // 추가: 파일 전체 참조
   outputColumnId: string;
 }
 
@@ -63,6 +70,6 @@ export interface Node {
   type: NodeType;
   columns: Column[];
   rows: Row[];
-  views?: ViewFilter[]; // 파일 전용 뷰(필터) 목록
+  views?: ViewFilter[]; 
   children?: Node[];
 }
