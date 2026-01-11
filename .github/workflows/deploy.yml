@@ -18,8 +18,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
-      - run: npm install
+          # cache: 'npm' 부분을 제거하여 lock 파일이 없어도 오류가 나지 않게 합니다.
+      - name: Install dependencies
+        run: npm install
       - name: Build
         run: npm run build
         env:
