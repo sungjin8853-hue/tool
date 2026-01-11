@@ -1,6 +1,5 @@
-
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { NodeType, Node, Column, Row, ColumnType, AIConfig } from './types';
+import { NodeType, Node, Column, ColumnType, AIConfig, Row } from './types';
 import Sidebar from './components/Sidebar';
 import FileView from './components/FileView';
 import FolderView from './components/FolderView';
@@ -77,7 +76,6 @@ function App() {
     return tree;
   };
 
-  // 로직 실행 함수 (날짜 관련 강력한 헬퍼 포함)
   const executeLogic = (config: AIConfig, rowData: Record<string, any>, columns: Column[], currentRoot: Node) => {
     if (!config.logicCode) return "";
     try {
@@ -90,12 +88,6 @@ function App() {
 
       const global: Record<string, any> = {
         '오늘날짜': new Date().toISOString().split('T')[0],
-        '현재시각': new Date().toLocaleTimeString(),
-        'formatDate': (d: any) => {
-          if (!d) return '';
-          const date = new Date(d);
-          return isNaN(date.getTime()) ? String(d) : date.toISOString().split('T')[0];
-        },
         'diffDays': (d1: any, d2: any) => {
           if (!d1 || !d2) return 0;
           const date1 = new Date(d1);
@@ -105,32 +97,32 @@ function App() {
         },
         'isToday': (d: any) => {
           if (!d) return false;
-          const target = new Date(d).toISOString().split('T')[0];
-          const today = new Date().toISOString().split('T')[0];
-          return target === today;
+          return new Date(d).toISOString().split('T')[0] === new Date().toISOString().split('T')[0];
         },
-        'addDays': (d: any, days: number) => {
-          if (!d) return '';
-          const date = new Date(d);
-          date.setDate(date.getDate() + days);
-          return date.toISOString().split('T')[0];
-        },
-        'isPast': (d: any) => {
-          if (!d) return false;
-          return new Date(d).getTime() < new Date().setHours(0,0,0,0);
-        },
-        'isFuture': (d: any) => {
-          if (!d) return false;
-          return new Date(d).getTime() > new Date().setHours(23,59,59,999);
-        }
+        'num': (v: any) => parseFloat(v || 0)
       };
 
-      // 외부 데이터 참조 주입
       if (config.externalInputs) {
         config.externalInputs.forEach(ext => {
           const extFile = findNode(ext.nodeId, currentRoot);
           if (extFile && extFile.rows.length > 0) {
             global[ext.alias] = extFile.rows[0].data[ext.columnId];
+          }
+        });
+      }
+
+      if (config.externalFiles) {
+        config.externalFiles.forEach(ref => {
+          const file = findNode(ref.nodeId, currentRoot);
+          if (file) {
+            global[ref.alias] = file.rows.map(r => {
+              const rowMap: Record<string, any> = {};
+              file.columns.forEach(c => {
+                rowMap[c.name] = r.data[c.id];
+                rowMap[c.id] = r.data[c.id];
+              });
+              return rowMap;
+            });
           }
         });
       }
@@ -142,34 +134,61 @@ function App() {
     }
   };
 
+  const recalculateTree = useCallback((tree: Node): Node => {
+    const processNode = (node: Node, currentRoot: Node): Node => {
+      let newNode = { ...node };
+      
+      if (newNode.type === NodeType.FILE && newNode.columns.length > 0) {
+        const formulaCols = newNode.columns.filter(c => c.type === ColumnType.AI_FORMULA && c.aiConfig);
+        
+        if (formulaCols.length > 0) {
+          newNode.rows = newNode.rows.map(row => {
+            let rowData = { ...row.data };
+            formulaCols.forEach(col => {
+              if (col.aiConfig) {
+                const result = executeLogic(col.aiConfig, rowData, newNode.columns, currentRoot);
+                const outputId = col.aiConfig.outputColumnId || col.id;
+                rowData[outputId] = result ?? "";
+              }
+            });
+            return { ...row, data: rowData };
+          });
+        }
+      }
+
+      if (newNode.children) {
+        newNode.children = newNode.children.map(child => processNode(child, currentRoot));
+      }
+      
+      return newNode;
+    };
+
+    return processNode(tree, tree);
+  }, []);
+
   const onUpdateCell = (rid: string, cid: string, val: any) => {
-    setRoot(prev => updateNodeInTree(prev, activeNodeId, n => {
-      const rowsWithNewValue = n.rows.map(r => r.id === rid ? { ...r, data: { ...r.data, [cid]: val } } : r);
-      const updatedRows = rowsWithNewValue.map(row => {
-        let rowData = { ...row.data };
-        n.columns.forEach(col => {
-          if (col.type === ColumnType.AI_FORMULA && col.aiConfig) {
-            const result = executeLogic(col.aiConfig, rowData, n.columns, prev);
-            const outputId = col.aiConfig.outputColumnId || col.id;
-            rowData[outputId] = result ?? "";
-          }
-        });
-        return { ...row, data: rowData };
-      });
-      return { ...n, rows: updatedRows };
-    }));
+    setRoot(prev => {
+      const updatedValueTree = updateNodeInTree(prev, activeNodeId, n => ({
+        ...n,
+        rows: n.rows.map(r => r.id === rid ? { ...r, data: { ...r.data, [cid]: val } } : r)
+      }));
+      return recalculateTree(updatedValueTree);
+    });
   };
 
   const handleRunTool = async (rowId: string, colId: string, config: AIConfig) => {
-    setRoot(prev => updateNodeInTree(prev, activeNodeId, n => ({
-      ...n,
-      rows: n.rows.map(r => {
-        if (r.id !== rowId) return r;
-        const result = executeLogic(config, r.data, n.columns, prev);
-        const outputId = config.outputColumnId || colId;
-        return { ...r, data: { ...r.data, [outputId]: result ?? "" } };
-      })
-    })));
+    setRoot(prev => {
+      const updatedValueTree = updateNodeInTree(prev, activeNodeId, n => ({
+        ...n,
+        rows: n.rows.map(r => {
+          if (r.id !== rowId) return r;
+          const result = executeLogic(config, r.data, n.columns, prev);
+          const outputId = config.outputColumnId || colId;
+          return { ...r, data: { ...r.data, [outputId]: result ?? "" } };
+        })
+      }));
+      return recalculateTree(updatedValueTree);
+    });
   };
 
   const addNode = (parentId: string, type: NodeType) => {
@@ -202,23 +221,18 @@ function App() {
     setRoot(prev => updateNodeInTree(prev, id, n => ({ ...n, name })));
   };
 
-  const handleMoveNode = (targetParentId: string) => {
-    if (!movingNodeId) return;
-    const nodeToMove = findNode(movingNodeId, root);
-    if (!nodeToMove) return;
-
-    setRoot(prev => {
-      const removeNodeFromTree = (n: Node): Node => {
-        const updatedChildren = n.children ? n.children.filter(c => c.id !== movingNodeId).map(removeNodeFromTree) : undefined;
-        return { ...n, children: updatedChildren };
-      };
-      const treeWithoutNode = removeNodeFromTree(prev);
-      return updateNodeInTree(treeWithoutNode, targetParentId, n => ({
-        ...n,
-        children: [...(n.children || []), { ...nodeToMove, parentId: targetParentId }]
-      }));
-    });
-    setMovingNodeId(null);
+  const handleMoveColumn = (cid: string, dir: 'left' | 'right') => {
+    setRoot(prev => updateNodeInTree(prev, activeNodeId, n => {
+      const idx = n.columns.findIndex(c => c.id === cid);
+      if (idx === -1) return n;
+      const newCols = [...n.columns];
+      if (dir === 'left' && idx > 0) {
+        [newCols[idx], newCols[idx-1]] = [newCols[idx-1], newCols[idx]];
+      } else if (dir === 'right' && idx < newCols.length - 1) {
+        [newCols[idx], newCols[idx+1]] = [newCols[idx+1], newCols[idx]];
+      }
+      return { ...n, columns: newCols };
+    }));
   };
 
   const activeNode = useMemo(() => findNode(activeNodeId, root), [activeNodeId, root]);
@@ -267,8 +281,9 @@ function App() {
             onOpenToolCreator={(cid, type) => setAiModalTarget({ nodeId: activeNodeId, colId: cid, type })}
             onAddChildFile={() => addNode(activeNode.parentId || 'root', NodeType.FILE)}
             onDeleteColumn={(cid) => setRoot(prev => updateNodeInTree(prev, activeNodeId, n => ({ ...n, columns: n.columns.filter(c => c.id !== cid) })))}
-            onRenameColumn={(cid, name) => setRoot(prev => updateNodeInTree(prev, activeNodeId, n => ({ ...n, columns: n.columns.map(c => c.id === cid ? { ...c, name } : c) })))}
-            onMoveColumn={() => {}}
+            // Corrected onRenameColumn to properly iterate over columns and update the name of the target column.
+            onRenameColumn={(cid, name) => setRoot(prev => updateNodeInTree(prev, activeNodeId, n => ({ ...n, columns: n.columns.map(col => col.id === cid ? { ...col, name } : col) })))}
+            onMoveColumn={handleMoveColumn}
             onRunTool={handleRunTool}
           />
         ) : (
@@ -287,21 +302,13 @@ function App() {
           currentColumns={aiModalNode.columns}
           onClose={() => setAiModalTarget(null)}
           onSave={(config) => {
-            setRoot(prev => updateNodeInTree(prev, aiModalTarget.nodeId, n => {
-              const updatedColumns = n.columns.map(c => c.id === aiModalTarget.colId ? { ...c, aiConfig: config } : c);
-              const updatedRows = n.rows.map(row => {
-                let rowData = { ...row.data };
-                updatedColumns.forEach(col => {
-                  if (col.type === ColumnType.AI_FORMULA && col.aiConfig) {
-                    const result = executeLogic(col.aiConfig, rowData, updatedColumns, prev);
-                    const outputId = col.aiConfig.outputColumnId || col.id;
-                    rowData[outputId] = result ?? "";
-                  }
-                });
-                return { ...row, data: rowData };
-              });
-              return { ...n, columns: updatedColumns, rows: updatedRows };
-            }));
+            setRoot(prev => {
+              const updatedConfigTree = updateNodeInTree(prev, aiModalTarget.nodeId, n => ({
+                ...n,
+                columns: n.columns.map(c => c.id === aiModalTarget.colId ? { ...c, aiConfig: config } : c)
+              }));
+              return recalculateTree(updatedConfigTree);
+            });
             setAiModalTarget(null);
           }}
         />
@@ -312,7 +319,22 @@ function App() {
           root={root}
           movingNodeId={movingNodeId}
           onClose={() => setMovingNodeId(null)}
-          onConfirm={handleMoveNode}
+          onConfirm={(targetParentId) => {
+            const nodeToMove = findNode(movingNodeId, root);
+            if (!nodeToMove) return;
+            setRoot(prev => {
+              const removeNode = (n: Node): Node => ({
+                ...n,
+                children: n.children?.filter(c => c.id !== movingNodeId).map(removeNode)
+              });
+              const treeWithoutNode = removeNode(prev);
+              return updateNodeInTree(treeWithoutNode, targetParentId, n => ({
+                ...n,
+                children: [...(n.children || []), { ...nodeToMove, parentId: targetParentId }]
+              }));
+            });
+            setMovingNodeId(null);
+          }}
         />
       )}
     </div>
