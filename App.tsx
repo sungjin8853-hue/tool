@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { NodeType, Node, Column, ColumnType, AIConfig, Row } from './types';
 import Sidebar from './components/Sidebar';
@@ -99,7 +100,23 @@ function App() {
           if (!d) return false;
           return new Date(d).toISOString().split('T')[0] === new Date().toISOString().split('T')[0];
         },
-        'num': (v: any) => parseFloat(v || 0)
+        'num': (v: any) => parseFloat(v || 0),
+        // 타이머 헬퍼 함수군
+        'timerSec': (v: any) => {
+          if (!v || typeof v.totalSeconds !== 'number') return 0;
+          const current = v.startTime ? v.totalSeconds + Math.floor((Date.now() - v.startTime) / 1000) : v.totalSeconds;
+          return current;
+        },
+        'timerMin': (v: any) => {
+          if (!v || typeof v.totalSeconds !== 'number') return 0;
+          const sec = v.startTime ? v.totalSeconds + Math.floor((Date.now() - v.startTime) / 1000) : v.totalSeconds;
+          return sec / 60;
+        },
+        'timerHr': (v: any) => {
+          if (!v || typeof v.totalSeconds !== 'number') return 0;
+          const sec = v.startTime ? v.totalSeconds + Math.floor((Date.now() - v.startTime) / 1000) : v.totalSeconds;
+          return sec / 3600;
+        }
       };
 
       if (config.externalInputs) {
@@ -281,7 +298,6 @@ function App() {
             onOpenToolCreator={(cid, type) => setAiModalTarget({ nodeId: activeNodeId, colId: cid, type })}
             onAddChildFile={() => addNode(activeNode.parentId || 'root', NodeType.FILE)}
             onDeleteColumn={(cid) => setRoot(prev => updateNodeInTree(prev, activeNodeId, n => ({ ...n, columns: n.columns.filter(c => c.id !== cid) })))}
-            // Corrected onRenameColumn to properly iterate over columns and update the name of the target column.
             onRenameColumn={(cid, name) => setRoot(prev => updateNodeInTree(prev, activeNodeId, n => ({ ...n, columns: n.columns.map(col => col.id === cid ? { ...col, name } : col) })))}
             onMoveColumn={handleMoveColumn}
             onRunTool={handleRunTool}
