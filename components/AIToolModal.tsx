@@ -42,14 +42,25 @@ const AIToolModal: React.FC<AIToolModalProps> = ({ root, targetColId, onClose, o
         'isToday': (d: any) => {
           if (!d) return false;
           return new Date(d).toISOString().split('T')[0] === new Date().toISOString().split('T')[0];
+        },
+        'num': (v: any) => parseFloat(v || 0),
+        'timerSec': (v: any) => {
+          if (!v || typeof v.totalSeconds !== 'number') return 0;
+          return v.totalSeconds;
+        },
+        'timerMin': (v: any) => {
+          if (!v || typeof v.totalSeconds !== 'number') return 0;
+          return v.totalSeconds / 60;
+        },
+        'timerHr': (v: any) => {
+          if (!v || typeof v.totalSeconds !== 'number') return 0;
+          return v.totalSeconds / 3600;
         }
       };
       
-      // 테스트용 가상 데이터 주입 (Mock Data)
       externalFiles.forEach(f => {
         const mockFile = allFiles.find(af => af.id === f.nodeId);
         if (mockFile) {
-          // 실제 파일 데이터가 있으면 사용하고, 없으면 가상 데이터 3개를 생성
           if (mockFile.rows.length > 0) {
             global[f.alias] = mockFile.rows.map(r => {
               const obj: any = {};
@@ -66,8 +77,12 @@ const AIToolModal: React.FC<AIToolModalProps> = ({ root, targetColId, onClose, o
         }
       });
 
-      // 현재 행 데이터 보정
-      currentColumns.forEach(c => { if(row[c.id] === undefined) row[c.name] = (c.type === ColumnType.NUMBER ? "50" : "데이터"); });
+      currentColumns.forEach(c => { 
+        if(row[c.id] === undefined) {
+           if (c.type === ColumnType.TIMER) row[c.id] = { totalSeconds: 3600, startTime: null }; // 테스트용 1시간
+           else row[c.name] = (c.type === ColumnType.NUMBER ? "50" : "데이터"); 
+        }
+      });
       
       const execute = new Function('row', 'global', `try { ${logicCode} } catch(e) { return "Error: " + e.message; }`);
       const res = execute(row, global);
