@@ -27,17 +27,12 @@ export const suggestAIConfig = async (
         - 'global' object: Helper functions and external data.
         
         [STRICT DATA RULES]
-        1. Numerical strings: Use parseFloat(val || 0) before any math or comparison.
-        2. External Files (global['Alias']): This is an Array of Objects. 
-           Example: [{ '시간': '2', '공부량': '10' }, { '시간': '6', '공부량': '20' }]
-        
-        [STRICT LOGIC PATTERNS]
-        - To calculate Average of 'FieldB' where 'FieldA' <= 5:
-          const data = global['FileAlias'] || [];
-          const filtered = data.filter(r => parseFloat(r['FieldA'] || 0) <= 5);
-          if (filtered.length === 0) return 0;
-          const sum = filtered.reduce((acc, r) => acc + parseFloat(r['FieldB'] || 0), 0);
-          return (sum / filtered.length).toFixed(1); // Return string or number
+        1. Numerical strings: Use parseFloat(val || 0) or global.num(val) before math.
+        2. Timer values (ColumnType.TIMER): Use these helpers exclusively for calculation:
+           - global.timerSec(row['TimerCol']): Returns total seconds as Number.
+           - global.timerMin(row['TimerCol']): Returns total minutes as Number.
+           - global.timerHr(row['TimerCol']): Returns total hours as Number.
+           - Use them to divide or multiply: e.g., global.timerHr(row['Time']) * global.num(row['Rate'])
         
         [CONTEXT]
         - Current fields: ${availableCurrentFields.join(', ')}
