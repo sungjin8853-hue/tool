@@ -4,7 +4,8 @@ import { GoogleGenAI, Type } from "@google/genai";
 export const suggestAIConfig = async (
   description: string,
   availableCurrentFields: string[],
-  availableExternalFields: string[] 
+  availableExternalFields: string[],
+  availableExternalFiles: string[] 
 ): Promise<{ prompt: string; inputPaths: string[]; externalAliases: string[]; logicCode: string }> => {
   const apiKey = process.env.API_KEY;
   
@@ -22,30 +23,31 @@ export const suggestAIConfig = async (
         Goal: "${description}"
         
         [INPUT SPECIFICATION]
-        - 'row' object contains current row data. Keys are exact column names.
-        - 'global' object contains helper functions and external data.
+        - 'row' object: Current row data. row['ColumnName']
+        - 'global' object: Helper functions and external data.
         
-        [AVAILABLE DATE HELPERS in 'global']
-        - global.diffDays(d1, d2): Returns integer difference in days between two dates.
-        - global.isToday(d): Returns boolean if date d is today.
-        - global.addDays(d, n): Returns 'YYYY-MM-DD' string of date d + n days.
-        - global.isPast(d): Returns boolean if date d is before today.
-        - global.isFuture(d): Returns boolean if date d is after today.
-        - global.formatDate(d): Returns 'YYYY-MM-DD' string.
-        - global.오늘날짜: Returns today's date string.
+        [STRICT DATA RULES]
+        1. Numerical strings: Use parseFloat(val || 0) before any math or comparison.
+        2. External Files (global['Alias']): This is an Array of Objects. 
+           Example: [{ '시간': '2', '공부량': '10' }, { '시간': '6', '공부량': '20' }]
         
-        [STRICT LOGIC RULES]
-        - Write a JavaScript code that calculates a value and 'return' it.
-        - Use row['ColumnName'] to access data.
-        - For date logic, ALWAYS use provided global helpers (e.g., global.diffDays(row['Start'], global.오늘날짜)).
-        - Current available fields: ${availableCurrentFields.join(', ')}
-        - Available external aliases: ${availableExternalFields.join(', ')}
+        [STRICT LOGIC PATTERNS]
+        - To calculate Average of 'FieldB' where 'FieldA' <= 5:
+          const data = global['FileAlias'] || [];
+          const filtered = data.filter(r => parseFloat(r['FieldA'] || 0) <= 5);
+          if (filtered.length === 0) return 0;
+          const sum = filtered.reduce((acc, r) => acc + parseFloat(r['FieldB'] || 0), 0);
+          return (sum / filtered.length).toFixed(1); // Return string or number
+        
+        [CONTEXT]
+        - Current fields: ${availableCurrentFields.join(', ')}
+        - External aliases (Arrays/Values): ${availableExternalFields.join(', ')}, ${availableExternalFiles.join(', ')}
         
         Generate JSON:
-        1. "prompt": User's goal description.
-        2. "inputPaths": Array of used column names from row object.
-        3. "externalAliases": Array of used external aliases from global object.
-        4. "logicCode": The JS code snippet (only logic, no function wrapper).
+        1. "prompt": User goal.
+        2. "inputPaths": Used column names from 'row'.
+        3. "externalAliases": Used aliases from 'global'.
+        4. "logicCode": The JS code snippet. Must 'return' a result.
       `,
       config: {
         responseMimeType: "application/json",
@@ -69,8 +71,6 @@ export const suggestAIConfig = async (
   } catch (error: any) {
     console.error("Gemini API Error Detail:", error);
     let msg = error.message || "AI 요청 처리 중 오류가 발생했습니다.";
-    if (msg.includes("403")) msg = "API 키가 올바르지 않거나 권한이 없습니다.";
-    if (msg.includes("429")) msg = "API 호출 한도를 초과했습니다.";
     throw new Error(msg);
   }
 };
