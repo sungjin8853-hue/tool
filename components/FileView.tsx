@@ -101,14 +101,13 @@ interface FileViewProps {
 }
 
 const FileView: React.FC<FileViewProps> = (props) => {
-  const { file, path, activeViewId, onSelectView, onUpdateViews, onAddColumn, onAddRow, onUpdateCell, onOpenToolCreator, onRunTool, onAddChildFile, onDeleteColumn, onRenameColumn } = props;
+  const { file, path, activeViewId, onSelectView, onUpdateViews, onAddColumn, onAddRow, onUpdateCell, onOpenToolCreator, onRunTool, onAddChildFile, onDeleteColumn, onRenameColumn, onMoveColumn } = props;
   const [isColMenuOpen, setIsColMenuOpen] = useState(false);
   const [showFilterSettings, setShowFilterSettings] = useState(false);
   const colMenuRef = useRef<HTMLDivElement>(null);
 
   const activeView = useMemo(() => file.views?.find(v => v.id === activeViewId), [file.views, activeViewId]);
 
-  // 필터링 엔진
   const filteredRows = useMemo(() => {
     if (!activeView || !activeView.conditions || activeView.conditions.length === 0) return file.rows;
     return file.rows.filter(row => {
@@ -353,7 +352,7 @@ const FileView: React.FC<FileViewProps> = (props) => {
           <thead>
             <tr className="bg-white border-b border-slate-100">
               <th className="w-12 p-4 text-[10px] text-slate-300 font-black italic">#</th>
-              {file.columns.map((col) => (
+              {file.columns.map((col, cidx) => (
                 <th key={col.id} className="p-4 text-left font-black text-slate-500 min-w-[220px] group border-r border-slate-50 last:border-r-0 relative">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -367,6 +366,12 @@ const FileView: React.FC<FileViewProps> = (props) => {
                       />
                     </div>
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {cidx > 0 && (
+                        <button onClick={() => onMoveColumn(col.id, 'left')} className="p-1.5 text-slate-300 hover:text-indigo-500 hover:bg-indigo-50 rounded-lg transition-colors" title="왼쪽으로 이동"><i className="fa-solid fa-arrow-left text-[10px]"></i></button>
+                      )}
+                      {cidx < file.columns.length - 1 && (
+                        <button onClick={() => onMoveColumn(col.id, 'right')} className="p-1.5 text-slate-300 hover:text-indigo-500 hover:bg-indigo-50 rounded-lg transition-colors" title="오른쪽으로 이동"><i className="fa-solid fa-arrow-right text-[10px]"></i></button>
+                      )}
                       {col.type.startsWith('AI') && (
                         <button onClick={() => onOpenToolCreator(col.id, col.type)} className="p-1.5 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><i className="fa-solid fa-gear text-[11px]"></i></button>
                       )}
