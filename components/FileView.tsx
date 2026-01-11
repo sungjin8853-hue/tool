@@ -201,13 +201,41 @@ const FileView: React.FC<FileViewProps> = (props) => {
         </div>
 
         <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
-          <button onClick={() => { onSelectView(null); setShowFilterSettings(false); }} className={`whitespace-nowrap px-4 py-2 rounded-lg text-[10px] font-black transition-all ${!activeViewId ? 'bg-indigo-50 text-indigo-600 border border-indigo-200 shadow-sm' : 'text-slate-400 hover:bg-slate-50'}`}>전체 데이터</button>
+          <button 
+            onClick={() => { onSelectView(null); setShowFilterSettings(false); }} 
+            className={`whitespace-nowrap px-4 py-2 rounded-lg text-[10px] font-black transition-all ${!activeViewId ? 'bg-indigo-50 text-indigo-600 border border-indigo-200 shadow-sm' : 'text-slate-400 hover:bg-slate-50'}`}
+          >
+            전체 데이터
+          </button>
+          
           {file.views?.map(v => (
             <div key={v.id} className="flex items-center gap-1 group/tab">
-              <button onClick={() => { onSelectView(v.id); setShowFilterSettings(true); }} className={`whitespace-nowrap px-4 py-2 rounded-lg text-[10px] font-black transition-all ${activeViewId === v.id ? 'bg-indigo-50 text-indigo-600 border border-indigo-200 shadow-sm' : 'text-slate-400 hover:bg-slate-50'}`}>{v.name}</button>
-              <button onClick={() => onUpdateViews(file.views?.filter(x => x.id !== v.id) || [])} className="opacity-0 group-hover/tab:opacity-100 p-1 text-slate-300 hover:text-rose-500 transition-all"><i className="fa-solid fa-xmark text-[10px]"></i></button>
+              <button 
+                onClick={() => onSelectView(v.id)} 
+                className={`whitespace-nowrap px-4 py-2 rounded-lg text-[10px] font-black transition-all ${activeViewId === v.id ? 'bg-indigo-50 text-indigo-600 border border-indigo-200 shadow-sm' : 'text-slate-400 hover:bg-slate-50'}`}
+              >
+                {v.name}
+              </button>
+              
+              {activeViewId === v.id && (
+                <button 
+                  onClick={() => setShowFilterSettings(!showFilterSettings)} 
+                  className={`p-1.5 rounded-md transition-all ${showFilterSettings ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-300 hover:text-indigo-500 hover:bg-indigo-50'}`}
+                  title="필터 설정 토글"
+                >
+                  <i className="fa-solid fa-filter-circle-dollar text-[10px]"></i>
+                </button>
+              )}
+              
+              <button 
+                onClick={() => onUpdateViews(file.views?.filter(x => x.id !== v.id) || [])} 
+                className="opacity-0 group-hover/tab:opacity-100 p-1 text-slate-300 hover:text-rose-500 transition-all"
+              >
+                <i className="fa-solid fa-xmark text-[10px]"></i>
+              </button>
             </div>
           ))}
+          
           <button onClick={() => {
             const id = Math.random().toString(36).substr(2, 9);
             onUpdateViews([...(file.views || []), { id, name: '새 보기', conditions: [] }]);
@@ -217,7 +245,7 @@ const FileView: React.FC<FileViewProps> = (props) => {
         </div>
 
         {activeView && showFilterSettings && (
-          <div className="mt-4 p-5 bg-slate-50 rounded-2xl border border-slate-200 animate-in fade-in slide-in-from-top-2">
+          <div className="mt-4 p-5 bg-slate-50 rounded-2xl border border-slate-200 animate-in fade-in slide-in-from-top-2 overflow-hidden max-h-[500px] transition-all">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <i className="fa-solid fa-filter text-indigo-500"></i>
@@ -228,21 +256,26 @@ const FileView: React.FC<FileViewProps> = (props) => {
                   placeholder="보기 이름 수정..."
                 />
               </div>
-              <button onClick={addFilterCondition} className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-black text-indigo-600 hover:bg-indigo-50 transition-all shadow-sm">
-                <i className="fa-solid fa-plus mr-1"></i> 조건 추가
-              </button>
+              <div className="flex items-center gap-2">
+                <button onClick={addFilterCondition} className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-black text-indigo-600 hover:bg-indigo-50 transition-all shadow-sm">
+                  <i className="fa-solid fa-plus mr-1"></i> 조건 추가
+                </button>
+                <button onClick={() => setShowFilterSettings(false)} className="px-3 py-1.5 bg-slate-200 text-slate-600 rounded-lg text-[10px] font-black hover:bg-slate-300 transition-all shadow-sm">
+                  <i className="fa-solid fa-eye-slash mr-1"></i> 숨기기
+                </button>
+              </div>
             </div>
             
-            <div className="space-y-2">
+            <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 scrollbar-hide">
               {activeView.conditions.length === 0 ? (
-                <p className="text-[10px] text-slate-400 font-bold italic py-2 text-center bg-white/50 rounded-xl border border-dashed border-slate-200">설정된 필터 조건이 없습니다. 전체 데이터가 표시됩니다.</p>
+                <p className="text-[10px] text-slate-400 font-bold italic py-4 text-center bg-white/50 rounded-xl border border-dashed border-slate-200">설정된 필터 조건이 없습니다. 전체 데이터가 표시됩니다.</p>
               ) : (
                 activeView.conditions.map(cond => {
                   const targetColumn = file.columns.find(c => c.id === cond.columnId);
                   const supportsDateFilter = targetColumn && [ColumnType.DATE, ColumnType.AI_FORMULA, ColumnType.AI_BUTTON].includes(targetColumn.type);
                   
                   return (
-                    <div key={cond.id} className="flex flex-wrap items-center gap-2 p-2 bg-white rounded-xl border border-slate-100 shadow-sm">
+                    <div key={cond.id} className="flex flex-wrap items-center gap-2 p-2 bg-white rounded-xl border border-slate-100 shadow-sm animate-in fade-in slide-in-from-left-2">
                       <select 
                         className="text-[10px] font-black p-1.5 bg-slate-50 border border-slate-100 rounded-lg outline-none text-slate-600"
                         value={cond.columnId}
