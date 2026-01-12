@@ -21,7 +21,7 @@ const formatDateForInput = (val: any) => {
   }
 };
 
-const SmartBadge = ({ value, type }: { value: any; type?: ColumnType }) => {
+const SmartBadge = ({ value, type, isOutputTarget }: { value: any; type?: ColumnType; isOutputTarget?: boolean }) => {
   if (value === undefined || value === null || value === '') {
     return <span className="text-slate-300 font-medium opacity-50">-</span>;
   }
@@ -37,9 +37,12 @@ const SmartBadge = ({ value, type }: { value: any; type?: ColumnType }) => {
   else if (isSuccess) colorClass = "bg-emerald-50 text-emerald-600 border-emerald-200";
   
   return (
-    <span className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border uppercase tracking-tight transition-all inline-block max-w-full truncate shadow-sm ${colorClass}`}>
-      {strValue}
-    </span>
+    <div className="flex items-center gap-1.5 max-w-full">
+      {isOutputTarget && <i className="fa-solid fa-reply rotate-180 text-[8px] text-indigo-400"></i>}
+      <span className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border uppercase tracking-tight transition-all inline-block truncate shadow-sm ${colorClass}`}>
+        {strValue}
+      </span>
+    </div>
   );
 };
 
@@ -48,7 +51,6 @@ const TimerCell = ({ value, onChange }: { value: any; onChange: (v: any) => void
   const [displaySeconds, setDisplaySeconds] = useState(data.totalSeconds);
   const isRunning = data.startTime !== null;
   
-  // 외부에서 데이터가 변경될 때 (예: 초기화) 내부 상태와 동기화
   useEffect(() => {
     if (!isRunning) {
       setDisplaySeconds(data.totalSeconds);
@@ -80,7 +82,6 @@ const TimerCell = ({ value, onChange }: { value: any; onChange: (v: any) => void
 
   const reset = (e: React.MouseEvent) => {
     e.stopPropagation();
-    // confirm을 제거하고 즉시 초기화하여 오류 가능성을 차단합니다.
     onChange({ totalSeconds: 0, startTime: null });
     setDisplaySeconds(0);
   };
@@ -419,6 +420,9 @@ const FileView: React.FC<FileViewProps> = (props) => {
                 <td className="p-3 text-center text-[10px] text-slate-300 font-black italic">{idx + 1}</td>
                 {file.columns.map(col => {
                   const cellValue = row.data[col.id];
+                  // 현재 열이 AI 수식 열인데, 출력 대상이 다른 열인 경우 시각적으로 표시해줍니다.
+                  const isOutputtingElsewhere = col.type === ColumnType.AI_FORMULA && col.aiConfig?.outputColumnId && col.aiConfig.outputColumnId !== col.id;
+
                   return (
                     <td key={col.id} className="p-2 border-r border-slate-50 last:border-r-0">
                       <div className="flex items-center gap-2 group/cell">
@@ -440,7 +444,7 @@ const FileView: React.FC<FileViewProps> = (props) => {
                               <i className="fa-solid fa-calculator text-[9px]"></i>
                             </div>
                             <div className="flex-1 overflow-hidden min-w-0">
-                              <SmartBadge value={cellValue} type={col.type} />
+                              <SmartBadge value={cellValue} type={col.type} isOutputTarget={isOutputtingElsewhere} />
                             </div>
                           </div>
                         ) : col.type === ColumnType.AI_BUTTON ? (
