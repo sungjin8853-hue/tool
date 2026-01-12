@@ -19,11 +19,11 @@ const AIToolModal: React.FC<AIToolModalProps> = ({ root, targetColId, onClose, o
 
   const [desc, setDesc] = useState(existingConfig?.prompt || '');
   const [logicCode, setLogicCode] = useState(existingConfig?.logicCode || '');
-  // IMPORTANT: inputs now stores Column IDs instead of names to distinguish duplicate names
   const [inputs, setInputs] = useState<string[]>(existingConfig?.inputPaths || []);
   const [externalInputs, setExternalInputs] = useState<ExternalInput[]>(existingConfig?.externalInputs || []);
   const [externalFiles, setExternalFiles] = useState<ExternalFileReference[]>(existingConfig?.externalFiles || []);
   const [loading, setLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
   const [outputId, setOutputId] = useState(existingConfig?.outputColumnId || targetColId);
   const [testResult, setTestResult] = useState<string | null>(null);
 
@@ -109,6 +109,7 @@ const AIToolModal: React.FC<AIToolModalProps> = ({ root, targetColId, onClose, o
   const handleAutoDesign = async () => {
     if (!desc) return;
     setLoading(true);
+    setAiError(null);
     try {
       const currentFieldInfo = currentColumns.map(c => ({ id: c.id, name: c.name }));
       const externalFieldInfo = externalInputs.map(ex => ({ id: ex.columnId, name: ex.columnName, alias: ex.alias }));
@@ -116,9 +117,10 @@ const AIToolModal: React.FC<AIToolModalProps> = ({ root, targetColId, onClose, o
       
       const result = await suggestAIConfig(desc, currentFieldInfo, externalFieldInfo, externalFileInfo);
       setLogicCode(result.logicCode);
-      setInputs(result.inputPaths); // AI will now return IDs
+      setInputs(result.inputPaths);
     } catch (error: any) {
-      console.error(error);
+      console.error("AI Generation Failed:", error);
+      setAiError(error.message || "AI 호출 중 오류가 발생했습니다. API 키 설정을 확인하세요.");
     } finally {
       setLoading(false);
     }
@@ -126,7 +128,7 @@ const AIToolModal: React.FC<AIToolModalProps> = ({ root, targetColId, onClose, o
 
   return (
     <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-xl z-[100] flex items-center justify-center p-6">
-      <div className="bg-white w-full max-w-7xl rounded-[3rem] shadow-2xl flex flex-col overflow-hidden max-h-[95vh] border border-white/20">
+      <div className="bg-white w-full max-w-7xl rounded-[3rem] shadow-2xl flex flex-col overflow-hidden max-h-[95vh] border border-white/20 animate-in fade-in zoom-in-95 duration-300">
         <div className="p-8 bg-indigo-600 text-white flex justify-between items-center shadow-lg shrink-0">
           <div>
             <h3 className="text-3xl font-black flex items-center gap-4">
@@ -138,6 +140,19 @@ const AIToolModal: React.FC<AIToolModalProps> = ({ root, targetColId, onClose, o
             <i className="fa-solid fa-xmark"></i>
           </button>
         </div>
+
+        {aiError && (
+          <div className="mx-8 mt-6 p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center gap-4 text-rose-600 animate-in slide-in-from-top-4">
+            <i className="fa-solid fa-circle-exclamation text-xl"></i>
+            <div className="flex-1">
+              <p className="text-xs font-black uppercase tracking-widest mb-1">AI Error</p>
+              <p className="text-sm font-bold">{aiError}</p>
+            </div>
+            <button onClick={() => setAiError(null)} className="p-2 hover:bg-rose-100 rounded-xl transition-all">
+              <i className="fa-solid fa-x"></i>
+            </button>
+          </div>
+        )}
 
         <div className="flex-1 overflow-hidden flex">
           <div className="flex-1 overflow-y-auto p-10 space-y-10 border-r border-slate-100">
@@ -151,9 +166,15 @@ const AIToolModal: React.FC<AIToolModalProps> = ({ root, targetColId, onClose, o
                   placeholder="예: 이름이 같은 열이 있어도 정확하게 계산합니다..."
                   value={desc}
                   onChange={e => setDesc(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleAutoDesign()}
                 />
-                <button onClick={handleAutoDesign} disabled={loading} className="px-10 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 transition-all disabled:opacity-50 shadow-lg active:scale-95">
-                  {loading ? <i className="fa-solid fa-spinner fa-spin"></i> : "생성"}
+                <button 
+                  onClick={handleAutoDesign} 
+                  disabled={loading || !desc} 
+                  className="px-10 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 transition-all disabled:opacity-50 shadow-lg active:scale-95 flex items-center gap-3"
+                >
+                  {loading ? <i className="fa-solid fa-circle-notch fa-spin"></i> : <i className="fa-solid fa-sparkles"></i>}
+                  <span>생성</span>
                 </button>
               </div>
             </div>
@@ -168,6 +189,7 @@ const AIToolModal: React.FC<AIToolModalProps> = ({ root, targetColId, onClose, o
                 value={logicCode}
                 onChange={e => setLogicCode(e.target.value)}
                 spellCheck={false}
+                placeholder="// AI가 생성한 코드가 여기에 표시됩니다..."
               />
             </div>
           </div>
@@ -273,7 +295,7 @@ const AIToolModal: React.FC<AIToolModalProps> = ({ root, targetColId, onClose, o
         <div className="p-10 bg-slate-50 border-t border-slate-100 flex justify-end gap-6 shrink-0">
           <button onClick={onClose} className="px-10 py-5 text-sm font-black text-slate-400 hover:text-slate-600 transition-all uppercase tracking-widest">취소</button>
           <button 
-            disabled={!logicCode}
+            disabled={!logicCode || loading}
             onClick={() => onSave({ prompt: desc, inputPaths: inputs, externalInputs, externalFiles, outputColumnId: outputId, logicCode })}
             className="px-24 py-5 bg-indigo-600 text-white rounded-3xl font-black shadow-2xl shadow-indigo-200 hover:bg-indigo-700 hover:-translate-y-1 active:translate-y-0 transition-all disabled:opacity-30"
           >
