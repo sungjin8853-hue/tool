@@ -43,7 +43,7 @@ function App() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(root));
   }, [root]);
 
-  const findNode = (id: string, current: Node): Node | null => {
+  const findNode = useCallback((id: string, current: Node): Node | null => {
     if (current.id === id) return current;
     if (current.children) {
       for (const child of current.children) {
@@ -52,9 +52,9 @@ function App() {
       }
     }
     return null;
-  };
+  }, []);
 
-  const getPath = (id: string, current: Node, currentPath: Node[] = []): Node[] | null => {
+  const getPath = useCallback((id: string, current: Node, currentPath: Node[] = []): Node[] | null => {
     const path = [...currentPath, current];
     if (current.id === id) return path;
     if (current.children) {
@@ -64,7 +64,7 @@ function App() {
       }
     }
     return null;
-  };
+  }, []);
 
   const updateNodeInTree = (tree: Node, targetId: string, updater: (node: Node) => Node): Node => {
     if (tree.id === targetId) return updater(tree);
@@ -80,7 +80,6 @@ function App() {
   const executeLogic = (config: AIConfig, rowData: Record<string, any>, columns: Column[], currentRoot: Node) => {
     if (!config.logicCode) return "";
     try {
-      // 1. 현재 행 데이터 바인딩 (이름과 ID 모두 지원)
       const contextRow: Record<string, any> = {};
       columns.forEach(col => {
         const val = rowData[col.id];
@@ -88,7 +87,6 @@ function App() {
         contextRow[col.name] = val;
       });
 
-      // 2. 글로벌 헬퍼 함수
       const global: Record<string, any> = {
         '오늘날짜': new Date().toISOString().split('T')[0],
         'diffDays': (d1: any, d2: any) => {
@@ -108,27 +106,19 @@ function App() {
         },
         'timerSec': (v: any) => {
           if (!v || typeof v.totalSeconds !== 'number') return 0;
-          const current = v.startTime ? v.totalSeconds + Math.floor((Date.now() - v.startTime) / 1000) : v.totalSeconds;
-          return current;
+          return v.startTime ? v.totalSeconds + Math.floor((Date.now() - v.startTime) / 1000) : v.totalSeconds;
         },
         'timerMin': (v: any) => global.timerSec(v) / 60,
         'timerHr': (v: any) => global.timerSec(v) / 3600
       };
 
-      // 3. 외부 단일 열 참조 (개별 필드)
       if (config.externalInputs) {
         config.externalInputs.forEach(ext => {
           const extFile = findNode(ext.nodeId, currentRoot);
-          if (extFile && extFile.rows.length > 0) {
-            // 기본적으로 첫 번째 행의 값을 가져오되, 향후 VLOOKUP 같은 기능을 위해 확장 가능
-            global[ext.alias] = extFile.rows[0].data[ext.columnId];
-          } else {
-            global[ext.alias] = null;
-          }
+          global[ext.alias] = (extFile && extFile.rows.length > 0) ? extFile.rows[0].data[ext.columnId] : null;
         });
       }
 
-      // 4. 외부 파일 전체 참조 (배열)
       if (config.externalFiles) {
         config.externalFiles.forEach(ref => {
           const file = findNode(ref.nodeId, currentRoot);
@@ -148,7 +138,8 @@ function App() {
       }
 
       const execute = new Function('row', 'global', `try { ${config.logicCode} } catch(e) { throw e; }`);
-      return execute(contextRow, global);
+      const result = execute(contextRow, global);
+      return result === undefined ? "" : result;
     } catch (e) {
       return `Error: ${(e as Error).message}`;
     }
@@ -159,19 +150,16 @@ function App() {
       let newNode = { ...node };
       
       if (newNode.type === NodeType.FILE && newNode.columns.length > 0) {
-        // AI 수식 열만 추출
         const formulaCols = newNode.columns.filter(c => c.type === ColumnType.AI_FORMULA && c.aiConfig);
         
         if (formulaCols.length > 0) {
           newNode.rows = newNode.rows.map(row => {
-            let rowData = { ...row.data };
-            // 각 행에 대해 등록된 모든 수식을 순서대로 실행
+            const rowData = { ...row.data };
             formulaCols.forEach(col => {
               if (col.aiConfig) {
                 const result = executeLogic(col.aiConfig, rowData, newNode.columns, currentRoot);
-                // 결과 저장 위치 결정: 지정된 outputColumnId가 없으면 수식 열 자체에 저장
                 const outputId = col.aiConfig.outputColumnId || col.id;
-                rowData[outputId] = result ?? "";
+                rowData[outputId] = result;
               }
             });
             return { ...row, data: rowData };
@@ -182,12 +170,11 @@ function App() {
       if (newNode.children) {
         newNode.children = newNode.children.map(child => processNode(child, currentRoot));
       }
-      
       return newNode;
     };
 
     return processNode(tree, tree);
-  }, []);
+  }, [findNode]);
 
   const onUpdateCell = (rid: string, cid: string, val: any) => {
     setRoot(prev => {
@@ -207,7 +194,7 @@ function App() {
           if (r.id !== rowId) return r;
           const result = executeLogic(config, r.data, n.columns, prev);
           const outputId = config.outputColumnId || colId;
-          return { ...r, data: { ...r.data, [outputId]: result ?? "" } };
+          return { ...r, data: { ...r.data, [outputId]: result } };
         })
       }));
       return recalculateTree(updatedValueTree);
@@ -258,9 +245,9 @@ function App() {
     }));
   };
 
-  const activeNode = useMemo(() => findNode(activeNodeId, root), [activeNodeId, root]);
-  const activePath = useMemo(() => getPath(activeNodeId, root) || [], [activeNodeId, root]);
-  const aiModalNode = useMemo(() => aiModalTarget ? findNode(aiModalTarget.nodeId, root) : null, [aiModalTarget, root]);
+  const activeNode = useMemo(() => findNode(activeNodeId, root), [activeNodeId, root, findNode]);
+  const activePath = useMemo(() => getPath(activeNodeId, root) || [], [activeNodeId, root, getPath]);
+  const aiModalNode = useMemo(() => aiModalTarget ? findNode(aiModalTarget.nodeId, root) : null, [aiModalTarget, root, findNode]);
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 font-sans overflow-hidden relative">
@@ -284,6 +271,13 @@ function App() {
       </div>
       
       <main className="flex-1 overflow-hidden p-4 md:p-8 flex flex-col relative">
+        {!process.env.API_KEY && (
+          <div className="absolute top-4 right-4 z-[60] bg-rose-50 border border-rose-200 px-4 py-2 rounded-xl flex items-center gap-2 animate-bounce">
+            <i className="fa-solid fa-triangle-exclamation text-rose-500"></i>
+            <span className="text-[10px] font-black text-rose-600 uppercase">API Key Missing</span>
+          </div>
+        )}
+
         {activeNode?.type === NodeType.FOLDER ? (
           <FolderView 
             folder={activeNode} 
@@ -329,7 +323,6 @@ function App() {
                 ...n,
                 columns: n.columns.map(c => c.id === aiModalTarget.colId ? { ...c, aiConfig: config } : c)
               }));
-              // 저장 즉시 트리 전체 재계산 트리거
               return recalculateTree(updatedConfigTree);
             });
             setAiModalTarget(null);
