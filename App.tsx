@@ -80,6 +80,7 @@ function App() {
   const executeLogic = (config: AIConfig, rowData: Record<string, any>, columns: Column[], currentRoot: Node) => {
     if (!config.logicCode) return "";
     try {
+      // 1. 현재 행 데이터 바인딩 (이름과 ID 모두 지원)
       const contextRow: Record<string, any> = {};
       columns.forEach(col => {
         const val = rowData[col.id];
@@ -87,6 +88,7 @@ function App() {
         contextRow[col.name] = val;
       });
 
+      // 2. 글로벌 헬퍼 함수
       const global: Record<string, any> = {
         '오늘날짜': new Date().toISOString().split('T')[0],
         'diffDays': (d1: any, d2: any) => {
@@ -100,34 +102,33 @@ function App() {
           if (!d) return false;
           return new Date(d).toISOString().split('T')[0] === new Date().toISOString().split('T')[0];
         },
-        'num': (v: any) => parseFloat(v || 0),
-        // 타이머 헬퍼 함수군
+        'num': (v: any) => {
+            const n = parseFloat(v);
+            return isNaN(n) ? 0 : n;
+        },
         'timerSec': (v: any) => {
           if (!v || typeof v.totalSeconds !== 'number') return 0;
           const current = v.startTime ? v.totalSeconds + Math.floor((Date.now() - v.startTime) / 1000) : v.totalSeconds;
           return current;
         },
-        'timerMin': (v: any) => {
-          if (!v || typeof v.totalSeconds !== 'number') return 0;
-          const sec = v.startTime ? v.totalSeconds + Math.floor((Date.now() - v.startTime) / 1000) : v.totalSeconds;
-          return sec / 60;
-        },
-        'timerHr': (v: any) => {
-          if (!v || typeof v.totalSeconds !== 'number') return 0;
-          const sec = v.startTime ? v.totalSeconds + Math.floor((Date.now() - v.startTime) / 1000) : v.totalSeconds;
-          return sec / 3600;
-        }
+        'timerMin': (v: any) => global.timerSec(v) / 60,
+        'timerHr': (v: any) => global.timerSec(v) / 3600
       };
 
+      // 3. 외부 단일 열 참조 (개별 필드)
       if (config.externalInputs) {
         config.externalInputs.forEach(ext => {
           const extFile = findNode(ext.nodeId, currentRoot);
           if (extFile && extFile.rows.length > 0) {
+            // 기본적으로 첫 번째 행의 값을 가져오되, 향후 VLOOKUP 같은 기능을 위해 확장 가능
             global[ext.alias] = extFile.rows[0].data[ext.columnId];
+          } else {
+            global[ext.alias] = null;
           }
         });
       }
 
+      // 4. 외부 파일 전체 참조 (배열)
       if (config.externalFiles) {
         config.externalFiles.forEach(ref => {
           const file = findNode(ref.nodeId, currentRoot);
@@ -140,6 +141,8 @@ function App() {
               });
               return rowMap;
             });
+          } else {
+            global[ref.alias] = [];
           }
         });
       }
@@ -156,14 +159,17 @@ function App() {
       let newNode = { ...node };
       
       if (newNode.type === NodeType.FILE && newNode.columns.length > 0) {
+        // AI 수식 열만 추출
         const formulaCols = newNode.columns.filter(c => c.type === ColumnType.AI_FORMULA && c.aiConfig);
         
         if (formulaCols.length > 0) {
           newNode.rows = newNode.rows.map(row => {
             let rowData = { ...row.data };
+            // 각 행에 대해 등록된 모든 수식을 순서대로 실행
             formulaCols.forEach(col => {
               if (col.aiConfig) {
                 const result = executeLogic(col.aiConfig, rowData, newNode.columns, currentRoot);
+                // 결과 저장 위치 결정: 지정된 outputColumnId가 없으면 수식 열 자체에 저장
                 const outputId = col.aiConfig.outputColumnId || col.id;
                 rowData[outputId] = result ?? "";
               }
@@ -323,6 +329,7 @@ function App() {
                 ...n,
                 columns: n.columns.map(c => c.id === aiModalTarget.colId ? { ...c, aiConfig: config } : c)
               }));
+              // 저장 즉시 트리 전체 재계산 트리거
               return recalculateTree(updatedConfigTree);
             });
             setAiModalTarget(null);
