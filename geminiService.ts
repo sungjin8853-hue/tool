@@ -3,46 +3,52 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 export const suggestAIConfig = async (
   description: string,
-  availableCurrentFields: string[],
-  availableExternalFields: string[],
-  availableExternalFiles: string[] 
+  availableCurrentFields: { id: string, name: string }[],
+  availableExternalFields: { id: string, name: string, alias: string }[],
+  availableExternalFiles: { id: string, name: string, alias: string }[] 
 ): Promise<{ prompt: string; inputPaths: string[]; externalAliases: string[]; logicCode: string }> => {
   const apiKey = process.env.API_KEY;
   
-  if (!apiKey) {
-    throw new Error("API 키가 설정되지 않았습니다. 환경 변수를 확인해주세요.");
+  if (!apiKey || apiKey === "") {
+    throw new Error("API_KEY가 설정되지 않았습니다. GitHub Secrets 또는 환경 변수를 확인해주세요.");
   }
 
   try {
     const ai = new GoogleGenAI({ apiKey });
     
+    const fieldListStr = availableCurrentFields.map(f => `[ID: ${f.id}, Name: ${f.name}]`).join(', ');
+    const extFieldListStr = availableExternalFields.map(f => `[Alias: ${f.alias}, Name: ${f.name}]`).join(', ');
+    const extFileListStr = availableExternalFiles.map(f => `[Alias: ${f.alias}, Name: ${f.name}]`).join(', ');
+
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `
-        You are a highly skilled JavaScript developer specialized in data processing.
-        Goal: "${description}"
+        You are a JavaScript data processing expert. Generate a logic snippet.
         
-        [INPUT SPECIFICATION]
-        - 'row' object: Current row data. row['ColumnName']
-        - 'global' object: Helper functions and external data.
+        [USER GOAL]
+        "${description}"
         
-        [STRICT DATA RULES]
-        1. Numerical strings: Use parseFloat(val || 0) or global.num(val) before math.
-        2. Timer values (ColumnType.TIMER): Use these helpers exclusively for calculation:
-           - global.timerSec(row['TimerCol']): Returns total seconds as Number.
-           - global.timerMin(row['TimerCol']): Returns total minutes as Number.
-           - global.timerHr(row['TimerCol']): Returns total hours as Number.
-           - Use them to divide or multiply: e.g., global.timerHr(row['Time']) * global.num(row['Rate'])
+        [CONTEXT - CURRENT ROW FIELDS]
+        ${fieldListStr}
+        (Note: Multiple columns may have the same name. Use row['ID'] for absolute uniqueness or row['Name'] for readability if unique.)
         
-        [CONTEXT]
-        - Current fields: ${availableCurrentFields.join(', ')}
-        - External aliases (Arrays/Values): ${availableExternalFields.join(', ')}, ${availableExternalFiles.join(', ')}
+        [CONTEXT - EXTERNAL DATA]
+        - External Fields (Single values): ${extFieldListStr}
+        - External Files (Arrays of objects): ${extFileListStr}
         
-        Generate JSON:
-        1. "prompt": User goal.
-        2. "inputPaths": Used column names from 'row'.
-        3. "externalAliases": Used aliases from 'global'.
-        4. "logicCode": The JS code snippet. Must 'return' a result.
+        [AVAILABLE OBJECTS]
+        1. 'row': Current row data. Access by ID (recommended for uniqueness) or Name.
+        2. 'global': 
+           - global.num(val): Safe parseFloat
+           - global.isToday(date): Boolean
+           - global.diffDays(d1, d2): Difference in days
+           - global.timerSec(timerCell): Current timer value
+           - External aliases are properties of 'global'
+        
+        [OUTPUT RULES]
+        - Return a JSON object.
+        - 'inputPaths' MUST be an array of column IDs (not names) used from 'row'.
+        - 'logicCode' MUST be the JS code string. Use 'return' for the final value.
       `,
       config: {
         responseMimeType: "application/json",
@@ -50,7 +56,7 @@ export const suggestAIConfig = async (
           type: Type.OBJECT,
           properties: {
             prompt: { type: Type.STRING },
-            inputPaths: { type: Type.ARRAY, items: { type: Type.STRING } },
+            inputPaths: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Array of Column IDs used" },
             externalAliases: { type: Type.ARRAY, items: { type: Type.STRING } },
             logicCode: { type: Type.STRING }
           },
@@ -60,12 +66,11 @@ export const suggestAIConfig = async (
     });
     
     const text = response.text;
-    if (!text) throw new Error("모델이 빈 응답을 반환했습니다.");
+    if (!text) throw new Error("AI 응답 생성 실패");
     
     return JSON.parse(text.trim());
   } catch (error: any) {
-    console.error("Gemini API Error Detail:", error);
-    let msg = error.message || "AI 요청 처리 중 오류가 발생했습니다.";
-    throw new Error(msg);
+    console.error("Gemini Error:", error);
+    throw new Error(error.message || "AI 처리 중 오류 발생");
   }
 };
