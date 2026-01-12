@@ -48,6 +48,13 @@ const TimerCell = ({ value, onChange }: { value: any; onChange: (v: any) => void
   const [displaySeconds, setDisplaySeconds] = useState(data.totalSeconds);
   const isRunning = data.startTime !== null;
   
+  // 외부에서 데이터가 변경될 때 (예: 초기화) 내부 상태와 동기화
+  useEffect(() => {
+    if (!isRunning) {
+      setDisplaySeconds(data.totalSeconds);
+    }
+  }, [data.totalSeconds, isRunning]);
+
   useEffect(() => {
     let interval: number;
     if (isRunning) {
@@ -59,7 +66,7 @@ const TimerCell = ({ value, onChange }: { value: any; onChange: (v: any) => void
       setDisplaySeconds(data.totalSeconds); 
     }
     return () => clearInterval(interval);
-  }, [isRunning, data]);
+  }, [isRunning, data.totalSeconds, data.startTime]);
 
   const toggle = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -71,14 +78,26 @@ const TimerCell = ({ value, onChange }: { value: any; onChange: (v: any) => void
     }
   };
 
+  const reset = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // confirm을 제거하고 즉시 초기화하여 오류 가능성을 차단합니다.
+    onChange({ totalSeconds: 0, startTime: null });
+    setDisplaySeconds(0);
+  };
+
   return (
     <div className="flex items-center gap-2 group/timer">
-      <div className={`font-mono text-[11px] font-black px-2 py-1 rounded border shadow-sm ${isRunning ? 'bg-indigo-600 text-white border-indigo-500 ring-2 ring-indigo-500/20' : 'bg-slate-50 text-slate-500'}`}>
+      <div className={`font-mono text-[11px] font-black px-2 py-1 rounded border shadow-sm transition-all ${isRunning ? 'bg-indigo-600 text-white border-indigo-500 ring-2 ring-indigo-500/20 scale-105' : 'bg-slate-50 text-slate-500'}`}>
         {formatTime(displaySeconds)}
       </div>
-      <button onClick={toggle} className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${isRunning ? 'bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white'}`}>
-        <i className={`fa-solid ${isRunning ? 'fa-pause text-[8px]' : 'fa-play text-[8px]'}`}></i>
-      </button>
+      <div className="flex items-center gap-1 opacity-0 group-hover/timer:opacity-100 transition-opacity">
+        <button onClick={toggle} className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${isRunning ? 'bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white'}`}>
+          <i className={`fa-solid ${isRunning ? 'fa-pause text-[8px]' : 'fa-play text-[8px]'}`}></i>
+        </button>
+        <button onClick={reset} className="w-7 h-7 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center hover:bg-rose-600 hover:text-white transition-all shadow-sm" title="초기화">
+          <i className="fa-solid fa-rotate-right text-[8px]"></i>
+        </button>
+      </div>
     </div>
   );
 };
